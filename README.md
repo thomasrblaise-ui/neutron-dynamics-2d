@@ -2,7 +2,7 @@
 
 An interactive 2D Monte Carlo simulation of neutron transport and criticality balance ($k_{\text{eff}}$) in a fissile assembly.
 
-🚀 **[Try the live simulation](https://your-username.github.io/your-repo-name/)** *(Replace with your GitHub Pages link)*
+🚀 **[Try the live simulation](https://github.com/thomasrblaise-ui/neutron-dynamics-2d/commit/4cd6841cc36e6dbc0d3a4ee744622cff0db817e4#diff-b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5R5)** *(Replace with your GitHub Pages link)*
 
 ---
 
