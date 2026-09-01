@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulation de Réaction en Chaîne & Albédo</title>
+  <style>
+    :root {
+      --bg-color: #121214;
+      --card-bg: #1e1e24;
+      --accent-color: #00d26a;
+      --deflector-color: #00b4d8;
+      --leak-color: #ff4757;
+      --text-color: #e1e1e6;
+      --text-dim: #a8a8b3;
+      --border-color: #323238;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 600px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+    }
+
+    h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    button {
+      background: var(--card-bg);
+      color: var(--text-color);
+      border: 1px solid var(--border-color);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    button:hover {
+      border-color: var(--accent-color);
+    }
+
+    .canvas-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    canvas#simCanvas {
+      width: 100%;
+      max-width: 320px;
+      height: auto;
+      aspect-ratio: 1;
+      background: #09090b;
+      border-radius: 6px;
+      touch-action: none;
+    }
+
+    .stats-bar {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      margin-top: 8px;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
+    .stats-bar span strong {
+      color: var(--accent-color);
+    }
+
+    .stats-bar span strong.leak-val {
+      color: var(--leak-color);
+    }
+
+    .chart-container {
+      width: 100%;
+      height: 55px;
+      margin-top: 8px;
+    }
+
+    canvas#chartCanvas {
+      width: 100%;
+      height: 100%;
+      background: #09090b;
+      border-radius: 4px;
+    }
+
+    .controls-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .control-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
+    .control-header.highlight {
+      color: var(--deflector-color);
+      font-weight: 600;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent-color);
+    }
+
+    input[type="range"].slider-albedo {
+      accent-color: var(--deflector-color);
+    }
+
+    .btn-group {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .btn-record {
+      grid-column: span 3;
+      background: #2a1215;
+      border-color: #5c1d24;
+      color: var(--leak-color);
+    }
+
+    .btn-record.recording {
+      background: var(--leak-color);
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1 id="title">Criticité & Albédo</h1>
+    <button id="langBtn">EN</button>
+  </header>
+
+  <div class="canvas-card">
+    <canvas id="simCanvas" width="320" height="320"></canvas>
+    <div class="stats-bar">
+      <span><span id="lblPop">Pop.</span>: <strong id="popCount">0</strong></span>
+      <span><span id="lblLeak">Fuite</span>: <strong id="leakCount" class="leak-val">0/s</strong></span>
+      <span><span id="lblStatus">État</span>: <strong id="statusVal">-</strong></span>
+    </div>
+    <div class="chart-container">
+      <canvas id="chartCanvas" width="580" height="55"></canvas>
+    </div>
+  </div>
+
+  <div class="controls-card">
+    <div class="btn-group">
+      <button id="startBtn">Démarrer</button>
+      <button id="pauseBtn">Pause</button>
+      <button id="resetBtn">Réinitialiser</button>
+      <button id="recordBtn" class="btn-record">🔴 Enregistrer WebM</button>
+    </div>
+
+    <!-- Core Radius -->
+    <div class="control-group">
+      <div class="control-header">
+        <span id="lblRadius">Rayon du cœur fissile</span>
+        <span id="valRadius">85 px</span>
+      </div>
+      <input type="range" id="sliderRadius" min="40" max="130" value="85">
+    </div>
+
+    <!-- Deflector Albedo -->
+    <div class="control-group">
+      <div class="control-header highlight">
+        <span id="lblAlbedo">Albédo du déflecteur</span>
+        <span id="valAlbedo">0 %</span>
+      </div>
+      <input type="range" id="sliderAlbedo" class="slider-albedo" min="0" max="100" value="0">
+    </div>
+
+    <!-- Speed -->
+    <div class="control-group">
+      <div class="control-header">
+        <span id="lblSpeed">Vitesse des neutrons</span>
+        <span id="valSpeed">2.0</span>
+      </div>
+      <input type="range" id="sliderSpeed" min="0.5" max="5.0" step="0.1" value="2.0">
+    </div>
+
+    <!-- Fission -->
+    <div class="control-group">
+      <div class="control-header">
+        <span id="lblFission">Probabilité de fission</span>
+        <span id="valFission">1.5 %</span>
+      </div>
+      <input type="range" id="sliderFission" min="0" max="5" step="0.1" value="1.5">
+    </div>
+
+    <!-- Capture -->
+    <div class="control-group">
+      <div class="control-header">
+        <span id="lblCapture">Probabilité de capture</span>
+        <span id="valCapture">1.0 %</span>
+      </div>
+      <input type="range" id="sliderCapture" min="0" max="5" step="0.1" value="1.0">
+    </div>
+
+    <!-- Nu -->
+    <div class="control-group">
+      <div class="control-header">
+        <span id="lblNu">Neutrons par fission (&nu;)</span>
+        <span id="valNu">2</span>
+      </div>
+      <input type="range" id="sliderNu" min="2" max="4" step="1" value="2">
+    </div>
+  </div>
+</div>
+
+<script>
+  const i18n = {
+    fr: {
+      title: "Criticité & Albédo",
+      start: "Démarrer",
+      pause: "Pause",
+      reset: "Réinitialiser",
+      record: "🔴 Enregistrer WebM",
+      recording: "⏹ Arrêter l'enregistrement",
+      pop: "Pop.",
+      leak: "Fuite",
+      status: "État",
+      sub: "Sous-critique",
+      crit: "Critique",
+      super: "Sur-critique",
+      radius: "Rayon du cœur fissile",
+      albedo: "Albédo du déflecteur",
+      speed: "Vitesse des neutrons",
+      fission: "Probabilité de fission",
+      capture: "Probabilité de capture",
+      nu: "Neutrons par fission (ν)"
+    },
+    en: {
+      title: "Criticality & Albedo",
+      start: "Start",
+      pause: "Pause",
+      reset: "Reset",
+      record: "🔴 Record WebM",
+      recording: "⏹ Stop Recording",
+      pop: "Pop.",
+      leak: "Leakage",
+      status: "State",
+      sub: "Subcritical",
+      crit: "Critical",
+      super: "Supercritical",
+      radius: "Fissile core radius",
+      albedo: "Deflector albedo",
+      speed: "Neutron speed",
+      fission: "Fission probability",
+      capture: "Capture probability",
+      nu: "Neutrons per fission (ν)"
+    }
+  };
+
+  let currentLang = 'fr';
+
+  // Canvas
+  const simCanvas = document.getElementById('simCanvas');
+  const simCtx = simCanvas.getContext('2d');
+  const chartCanvas = document.getElementById('chartCanvas');
+  const chartCtx = chartCanvas.getContext('2d');
+
+  // DOM Elements
+  const langBtn = document.getElementById('langBtn');
+  const startBtn = document.getElementById('startBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const recordBtn = document.getElementById('recordBtn');
+
+  const popCountEl = document.getElementById('popCount');
+  const leakCountEl = document.getElementById('leakCount');
+  const statusValEl = document.getElementById('statusVal');
+
+  const sliderRadius = document.getElementById('sliderRadius');
+  const sliderAlbedo = document.getElementById('sliderAlbedo');
+  const sliderSpeed = document.getElementById('sliderSpeed');
+  const sliderFission = document.getElementById('sliderFission');
+  const sliderCapture = document.getElementById('sliderCapture');
+  const sliderNu = document.getElementById('sliderNu');
+
+  // Parameters
+  const MAX_NEUTRONS = 2500;
+  const CENTER_X = simCanvas.width / 2;
+  const CENTER_Y = simCanvas.height / 2;
+
+  let isRunning = false;
+  let animId = null;
+  let neutrons = [];
+  let popHistory = [];
+  let escapedCountThisFrame = 0;
+  let smoothedLeakageRate = 0;
+
+  // MediaRecorder
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let isRecording = false;
+
+  class Neutron {
+    constructor(x, y, angle, speed) {
+      this.x = x;
+      this.y = y;
+      this.vx = Math.cos(angle) * speed;
+      this.vy = Math.sin(angle) * speed;
+      this.hasLeaked = false;
+    }
+
+    update() {
+      this.x += this.vx;
+      this.y += this.vy;
+    }
+  }
+
+  function initSimulation() {
+    neutrons = [];
+    popHistory = [];
+    escapedCountThisFrame = 0;
+    smoothedLeakageRate = 0;
+    const speed = parseFloat(sliderSpeed.value);
+    const rCore = parseFloat(sliderRadius.value);
+
+    for (let i = 0; i < 25; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const r = Math.random() * (rCore * 0.6);
+      neutrons.push(new Neutron(
+        CENTER_X + Math.cos(angle) * r,
+        CENTER_Y + Math.sin(angle) * r,
+        Math.random() * Math.PI * 2,
+        speed
+      ));
+    }
+    updateStats();
+    draw();
+    drawChart();
+  }
+
+  function stepSimulation() {
+    const rCore = parseFloat(sliderRadius.value);
+    const albedo = parseFloat(sliderAlbedo.value) / 100;
+    const speed = parseFloat(sliderSpeed.value);
+    const pFission = parseFloat(sliderFission.value) / 100;
+    const pCapture = parseFloat(sliderCapture.value) / 100;
+    const nu = parseInt(sliderNu.value, 10);
+
+    const nextNeutrons = [];
+    let leaksInFrame = 0;
+
+    for (let i = 0; i < neutrons.length; i++) {
+      const n = neutrons[i];
+
+      const prevDx = n.x - CENTER_X;
+      const prevDy = n.y - CENTER_Y;
+      const prevDist = Math.sqrt(prevDx * prevDx + prevDy * prevDy);
+
+      n.update();
+
+      const dx = n.x - CENTER_X;
+      const dy = n.y - CENTER_Y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      // Boundary / Deflector collision check
+      if (!n.hasLeaked && prevDist < rCore && dist >= rCore) {
+        if (Math.random() < albedo) {
+          // Specular reflection back into the core
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const dot = n.vx * nx + n.vy * ny;
+          if (dot > 0) {
+            n.vx -= 2 * dot * nx;
+            n.vy -= 2 * dot * ny;
+            n.x = CENTER_X + nx * (rCore - 0.5);
+            n.y = CENTER_Y + ny * (rCore - 0.5);
+          }
+          nextNeutrons.push(n);
+          continue;
+        } else {
+          // Neutron penetrates deflector and leaks
+          n.hasLeaked = true;
+          leaksInFrame++;
+        }
+      }
+
+      // Check boundary of canvas (out of simulation area)
+      if (n.x < -10 || n.x > simCanvas.width + 10 || n.y < -10 || n.y > simCanvas.height + 10) {
+        continue;
+      }
+
+      // Interactions (only if inside core and hasn't leaked)
+      if (!n.hasLeaked) {
+        const rand = Math.random();
+        if (rand < pFission) {
+          // Fission event
+          for (let k = 0; k < nu; k++) {
+            if (neutrons.length + nextNeutrons.length < MAX_NEUTRONS) {
+              nextNeutrons.push(new Neutron(n.x, n.y, Math.random() * Math.PI * 2, speed));
+            }
+          }
+        } else if (rand < pFission + pCapture) {
+          // Captured
+        } else {
+          nextNeutrons.push(n);
+        }
+      } else {
+        // Leaked neutron traveling freely in surrounding space
+        nextNeutrons.push(n);
+      }
+    }
+
+    neutrons = nextNeutrons;
+
+    // Smooth leakage rate display (approx 60 FPS)
+    smoothedLeakageRate = smoothedLeakageRate * 0.9 + (leaksInFrame * 60) * 0.1;
+
+    // Count internal neutrons for criticality chart
+    const internalCount = neutrons.filter(n => !n.hasLeaked).length;
+    if (popHistory.length > 100) popHistory.shift();
+    popHistory.push(internalCount);
+  }
+
+  function draw() {
+    simCtx.clearRect(0, 0, simCanvas.width, simCanvas.height);
+
+    const rCore = parseFloat(sliderRadius.value);
+    const albedo = parseFloat(sliderAlbedo.value);
+
+    // 1. Core Interior
+    simCtx.beginPath();
+    simCtx.arc(CENTER_X, CENTER_Y, rCore, 0, Math.PI * 2);
+    simCtx.fillStyle = 'rgba(0, 210, 106, 0.08)';
+    simCtx.fill();
+
+    // 2. Deflector Line (Thickness & opacity reflecting albedo)
+    simCtx.beginPath();
+    simCtx.arc(CENTER_X, CENTER_Y, rCore, 0, Math.PI * 2);
+    simCtx.strokeStyle = '#00b4d8';
+    simCtx.lineWidth = 3 + (albedo / 100) * 3;
+    simCtx.shadowColor = '#00b4d8';
+    simCtx.shadowBlur = (albedo / 100) * 12;
+    simCtx.stroke();
+    simCtx.shadowBlur = 0; // Reset shadow
+
+    // 3. Neutrons
+    for (let i = 0; i < neutrons.length; i++) {
+      const n = neutrons[i];
+      simCtx.beginPath();
+      simCtx.arc(n.x, n.y, 2, 0, Math.PI * 2);
+      simCtx.fillStyle = n.hasLeaked ? '#ff4757' : '#ffffff';
+      simCtx.fill();
+    }
+  }
+
+  function drawChart() {
+    chartCtx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+    if (popHistory.length < 2) return;
+
+    chartCtx.beginPath();
+    chartCtx.strokeStyle = '#00d26a';
+    chartCtx.lineWidth = 1.5;
+
+    const stepX = chartCanvas.width / 100;
+    const maxVal = Math.max(100, ...popHistory);
+
+    for (let i = 0; i < popHistory.length; i++) {
+      const x = i * stepX;
+      const y = chartCanvas.height - (popHistory[i] / maxVal) * (chartCanvas.height - 10) - 5;
+      if (i === 0) chartCtx.moveTo(x, y);
+      else chartCtx.lineTo(x, y);
+    }
+    chartCtx.stroke();
+  }
+
+  function updateStats() {
+    const internalCount = neutrons.filter(n => !n.hasLeaked).length;
+    popCountEl.textContent = internalCount;
+    leakCountEl.textContent = Math.round(smoothedLeakageRate) + '/s';
+
+    const txt = i18n[currentLang];
+
+    if (popHistory.length > 10) {
+      const recent = popHistory.slice(-10);
+      const diff = recent[recent.length - 1] - recent[0];
+      if (diff > 5) {
+        statusValEl.textContent = txt.super;
+        statusValEl.style.color = 'var(--leak-color)';
+      } else if (diff < -5 || internalCount === 0) {
+        statusValEl.textContent = txt.sub;
+        statusValEl.style.color = 'var(--text-dim)';
+      } else {
+        statusValEl.textContent = txt.crit;
+        statusValEl.style.color = 'var(--accent-color)';
+      }
+    } else {
+      statusValEl.textContent = "-";
+      statusValEl.style.color = "var(--text-color)";
+    }
+  }
+
+  function loop() {
+    if (!isRunning) return;
+    stepSimulation();
+    draw();
+    drawChart();
+    updateStats();
+    animId = requestAnimationFrame(loop);
+  }
+
+  function setLanguage(lang) {
+    currentLang = lang;
+    const t = i18n[lang];
+    document.getElementById('title').textContent = t.title;
+    startBtn.textContent = t.start;
+    pauseBtn.textContent = t.pause;
+    resetBtn.textContent = t.reset;
+    recordBtn.textContent = isRecording ? t.recording : t.record;
+    document.getElementById('lblPop').textContent = t.pop;
+    document.getElementById('lblLeak').textContent = t.leak;
+    document.getElementById('lblStatus').textContent = t.status;
+    document.getElementById('lblRadius').textContent = t.radius;
+    document.getElementById('lblAlbedo').textContent = t.albedo;
+    document.getElementById('lblSpeed').textContent = t.speed;
+    document.getElementById('lblFission').textContent = t.fission;
+    document.getElementById('lblCapture').textContent = t.capture;
+    document.getElementById('lblNu').textContent = t.nu;
+    langBtn.textContent = lang === 'fr' ? 'EN' : 'FR';
+    updateStats();
+  }
+
+  // Event Listeners
+  langBtn.addEventListener('click', () => setLanguage(currentLang === 'fr' ? 'en' : 'fr'));
+
+  startBtn.addEventListener('click', () => {
+    if (!isRunning) {
+      isRunning = true;
+      loop();
+    }
+  });
+
+  pauseBtn.addEventListener('click', () => {
+    isRunning = false;
+    if (animId) cancelAnimationFrame(animId);
+  });
+
+  resetBtn.addEventListener('click', () => {
+    isRunning = false;
+    if (animId) cancelAnimationFrame(animId);
+    initSimulation();
+  });
+
+  sliderRadius.addEventListener('input', (e) => {
+    document.getElementById('valRadius').textContent = e.target.value + ' px';
+    draw();
+  });
+
+  sliderAlbedo.addEventListener('input', (e) => {
+    document.getElementById('valAlbedo').textContent = e.target.value + ' %';
+    draw();
+  });
+
+  sliderSpeed.addEventListener('input', (e) => {
+    document.getElementById('valSpeed').textContent = parseFloat(e.target.value).toFixed(1);
+  });
+
+  sliderFission.addEventListener('input', (e) => {
+    document.getElementById('valFission').textContent = parseFloat(e.target.value).toFixed(1) + ' %';
+  });
+
+  sliderCapture.addEventListener('input', (e) => {
+    document.getElementById('valCapture').textContent = parseFloat(e.target.value).toFixed(1) + ' %';
+  });
+
+  sliderNu.addEventListener('input', (e) => {
+    document.getElementById('valNu').textContent = e.target.value;
+  });
+
+  // Video Recording
+  recordBtn.addEventListener('click', () => {
+    if (!isRecording) startRecording();
+    else stopRecording();
+  });
+
+  function startRecording() {
+    recordedChunks = [];
+    const stream = simCanvas.captureStream(30);
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) recordedChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'simulation-albedo.webm';
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    mediaRecorder.start();
+    isRecording = true;
+    recordBtn.classList.add('recording');
+    recordBtn.textContent = i18n[currentLang].recording;
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      isRecording = false;
+      recordBtn.classList.remove('recording');
+      recordBtn.textContent = i18n[currentLang].record;
+    }
+  }
+
+  // Init
+  initSimulation();
+</script>
+</body>
+</html>
